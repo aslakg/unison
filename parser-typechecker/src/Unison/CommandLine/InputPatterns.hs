@@ -260,6 +260,11 @@ view = InputPattern "view" [] [(OnePlus, exactDefinitionQueryArg)]
       "`view foo` prints the definition of `foo`."
       (pure . Input.ShowDefinitionI Input.ConsoleLocation)
 
+viewData :: InputPattern
+viewData = InputPattern "data" [] [(OnePlus, exactDefinitionQueryArg)]
+      "`data foo` prints the definition of `foo` as a data structure."
+      (pure . Input.ShowDefinitionII Input.ConsoleLocation)      
+
 display :: InputPattern
 display = InputPattern "display" [] [(Required, exactDefinitionQueryArg)]
       "`display foo` prints a rendered version of the term `foo`."
@@ -1115,6 +1120,8 @@ validInputs =
   , findShallow
   , findVerbose
   , view
+  , viewData
+  , viewByPrefix
   , display
   , displayTo
   , docs

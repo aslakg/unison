@@ -118,6 +118,7 @@ data Input
   | FindShallowI Path'
   | FindPatchI
   | ShowDefinitionI OutputLocation [String]
+  | ShowDefinitionII OutputLocation [String]
   | ShowDefinitionByPrefixI OutputLocation [String]
   | ShowReflogI
   | UpdateBuiltinsI

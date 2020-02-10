@@ -152,6 +152,10 @@ data Output v
                        PPE.PrettyPrintEnvDecl
                        (Map Reference (DisplayThing (Decl v Ann)))
                        (Map Reference (DisplayThing (Term v Ann)))
+  | DisplayDefinitionsAsData (Maybe FilePath)
+                       PPE.PrettyPrintEnvDecl
+                       (Map Reference (DisplayThing (Decl v Ann)))
+                       (Map Reference (DisplayThing (Term v Ann)))
   -- | Invariant: there's at least one conflict or edit in the TodoOutput.
   | TodoOutput PPE.PrettyPrintEnvDecl (TO.TodoOutput v Ann)
   | TestIncrementalOutputStart PPE.PrettyPrintEnv (Int,Int) Reference (Term v Ann)
@@ -285,6 +289,7 @@ isFailure o = case o of
   Evaluated{} -> False
   Typechecked{} -> False
   DisplayDefinitions _ _ m1 m2 -> null m1 && null m2
+  DisplayDefinitionsAsData _ _ m1 m2 -> null m1 && null m2
   DisplayRendered{} -> False
   TodoOutput _ todo -> TO.todoScore todo /= 0
   TestIncrementalOutputStart{} -> False

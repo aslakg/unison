@@ -352,6 +352,7 @@ loop = do
           FindShallowI{} -> wat
           FindPatchI{} -> wat
           ShowDefinitionI{} -> wat
+          ShowDefinitionII{} -> wat
           DisplayI{} -> wat
           DocsI{} -> wat
           ShowDefinitionByPrefixI{} -> wat
@@ -904,6 +905,76 @@ loop = do
           when (not $ null loadedDisplayTypes && null loadedDisplayTerms) $
             eval . Notify $
               DisplayDefinitions loc ppe loadedDisplayTypes loadedDisplayTerms
+          when (not $ null misses) $
+            eval . Notify . SearchTermsNotFound $ fmap fst misses
+          -- We set latestFile to be programmatically generated, if we
+          -- are viewing these definitions to a file - this will skip the
+          -- next update for that file (which will happen immediately)
+          latestFile .= ((, True) <$> loc)
+
+
+
+      ShowDefinitionII outputLoc (fmap HQ.unsafeFromString -> hqs) -> do
+        parseNames <- makeHistoricalParsingNames $ Set.fromList hqs
+        let resultss = searchBranchExact hqLength parseNames hqs
+            (misses, hits) = partition (\(_, results) -> null results) (zip hqs resultss)
+            results = List.sort . uniqueBy SR.toReferent $ hits >>= snd
+        results' <- loadSearchResults results
+        let termTypes :: Map.Map Reference (Type v Ann)
+            termTypes =
+              Map.fromList
+                [ (r, t) | SR'.Tm _ (Just t) (Referent.Ref r) _ <- results' ]
+            (collatedTypes, collatedTerms) = collateReferences
+              (mapMaybe SR'.tpReference results')
+              (mapMaybe SR'.tmReferent results')
+        -- load the `collatedTerms` and types into a Map Reference.Id Term/Type
+        -- for later
+        loadedDerivedTerms <-
+          fmap (Map.fromList . catMaybes) . for (toList collatedTerms) $ \case
+            Reference.DerivedId i -> fmap (i,) <$> eval (LoadTerm i)
+            Reference.Builtin{} -> pure Nothing
+        loadedDerivedTypes <-
+          fmap (Map.fromList . catMaybes) . for (toList collatedTypes) $ \case
+            Reference.DerivedId i -> fmap (i,) <$> eval (LoadType i)
+            Reference.Builtin{} -> pure Nothing
+        -- Populate DisplayThings for the search results, in anticipation of
+        -- displaying the definitions.
+        loadedDisplayTerms :: Map Reference (DisplayThing (Term v Ann)) <-
+          fmap Map.fromList . for (toList collatedTerms) $ \case
+          r@(Reference.DerivedId i) -> do
+            let tm = Map.lookup i loadedDerivedTerms
+            -- We add a type annotation to the term using if it doesn't
+            -- already have one that the user provided
+            pure . (r, ) $ case liftA2 (,) tm (Map.lookup r termTypes) of
+              Nothing        -> MissingThing i
+              Just (tm, typ) -> case tm of
+                Term.Ann' _ _ -> RegularThing tm
+                _ -> RegularThing (Term.ann (ABT.annotation tm) tm typ)
+          r@(Reference.Builtin _) -> pure (r, BuiltinThing)
+        let loadedDisplayTypes :: Map Reference (DisplayThing (DD.Decl v Ann))
+            loadedDisplayTypes =
+              Map.fromList . (`fmap` toList collatedTypes) $ \case
+                r@(Reference.DerivedId i) ->
+                  (r,) . maybe (MissingThing i) RegularThing
+                        $ Map.lookup i loadedDerivedTypes
+                r@(Reference.Builtin _) -> (r, BuiltinThing)
+        -- the SR' deps include the result term/type names, and the
+        let deps = foldMap SR'.labeledDependencies results'
+                <> foldMap Term.labeledDependencies loadedDerivedTerms
+        printNames <- makePrintNamesFromLabeled' deps
+
+        -- We might like to make sure that the user search terms get used as
+        -- the names in the pretty-printer, but the current implementation
+        -- doesn't.
+        ppe <- prettyPrintEnvDecl printNames
+        let loc = case outputLoc of
+              ConsoleLocation    -> Nothing
+              FileLocation path  -> Just path
+              LatestFileLocation -> fmap fst latestFile' <|> Just "scratch.u"
+        do
+          when (not $ null loadedDisplayTypes && null loadedDisplayTerms) $
+            eval . Notify $
+              DisplayDefinitionsAsData loc ppe loadedDisplayTypes loadedDisplayTerms
           when (not $ null misses) $
             eval . Notify . SearchTermsNotFound $ fmap fst misses
           -- We set latestFile to be programmatically generated, if we

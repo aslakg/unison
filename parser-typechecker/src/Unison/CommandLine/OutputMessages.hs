@@ -272,6 +272,8 @@ notifyUser dir o = case o of
 
   DisplayDefinitions outputLoc ppe types terms ->
     displayDefinitions outputLoc ppe types terms
+  DisplayDefinitionsAsData outputLoc ppe types terms ->
+    displayDefinitionsAsData outputLoc ppe types terms    
   DisplayRendered outputLoc pp ->
     displayRendered outputLoc pp
   DisplayLinks ppe md types terms ->
@@ -991,6 +993,41 @@ displayDefinitions' ppe0 types terms = P.syntaxToColor $ P.sep "\n\n" (prettyTyp
     <> P.newline
     <> tip "You might need to repair the codebase manually."
 
+
+displayDefinitionsAsData' :: Var v => Ord a1
+  => PPE.PrettyPrintEnvDecl
+  -> Map Reference.Reference (DisplayThing (DD.Decl v a1))
+  -> Map Reference.Reference (DisplayThing (Unison.Term.AnnotatedTerm v a1))
+  -> Pretty
+displayDefinitionsAsData' ppe0 types terms = P.syntaxToColor $ P.sep "\n\n" (prettyTypes <> prettyTerms)
+  where
+  ppeBody r = PPE.declarationPPE ppe0 r
+  ppeDecl = PPE.unsuffixifiedPPE ppe0
+  prettyTerms = map go . Map.toList
+              -- sort by name
+              $ Map.mapKeys (first (PPE.termName ppeDecl . Referent.Ref) . dupe) terms
+  prettyTypes = map go2 . Map.toList
+              $ Map.mapKeys (first (PPE.typeName ppeDecl) . dupe) types
+  go ((n, r), dt) =
+    case dt of
+      MissingThing r -> missing n r
+      BuiltinThing -> builtin n
+      RegularThing tm -> P.string $ show tm -- TermPrinter.prettyBinding (ppeBody r) n tm
+  go2 ((n, r), dt) =
+    case dt of
+      MissingThing r -> missing n r
+      BuiltinThing -> builtin n
+      RegularThing decl -> case decl of
+        Left d  -> DeclPrinter.prettyEffectDecl (ppeBody r) r n d
+        Right d -> DeclPrinter.prettyDataDecl (ppeBody r) r n d
+  builtin n = P.wrap $ "--" <> prettyHashQualified n <> " is built-in."
+  missing n r = P.wrap (
+    "-- The name " <> prettyHashQualified n <> " is assigned to the "
+    <> "reference " <> fromString (show r ++ ",")
+    <> "which is missing from the codebase.")
+    <> P.newline
+    <> tip "You might need to repair the codebase manually."
+
 displayRendered :: Maybe FilePath -> Pretty -> IO Pretty
 displayRendered outputLoc pp =
   maybe (pure pp) scratchAndDisplay outputLoc
@@ -1051,6 +1088,44 @@ displayDefinitions outputLoc ppe types terms =
           "to replace the definitions currently in this namespace."
       ]
   code = displayDefinitions' ppe types terms
+
+displayDefinitionsAsData :: Var v => Ord a1 =>
+  Maybe FilePath
+  -> PPE.PrettyPrintEnvDecl
+  -> Map Reference.Reference (DisplayThing (DD.Decl v a1))
+  -> Map Reference.Reference (DisplayThing (Unison.Term.AnnotatedTerm v a1))
+  -> IO Pretty
+displayDefinitionsAsData outputLoc ppe types terms | Map.null types && Map.null terms =
+  pure $ P.callout "😶" "No results to display."
+displayDefinitionsAsData outputLoc ppe types terms =
+  maybe displayOnly scratchAndDisplay outputLoc
+  where
+  displayOnly = pure code
+  scratchAndDisplay path = do
+    path' <- canonicalizePath path
+    prependToFile code path'
+    pure (message code path')
+    where
+    prependToFile code path = do
+      existingContents <- do
+        exists <- doesFileExist path
+        if exists then readFile path
+        else pure ""
+      writeFile path . Text.pack . P.toPlain 80 $
+        P.lines [ code, ""
+                , "---- " <> "Anything below this line is ignored by Unison."
+                , "", P.text existingContents ]
+    message code path =
+      P.callout "☝️" $ P.lines [
+        P.wrap $ "I added these definitions to the top of " <> fromString path,
+        "",
+        P.indentN 2 code,
+        "",
+        P.wrap $
+          "You can edit them there, then do" <> makeExample' IP.update <>
+          "to replace the definitions currently in this namespace."
+      ]
+  code = displayDefinitionsAsData' ppe types terms  
 
 displayTestResults :: Bool -- whether to show the tip
                    -> PPE.PrettyPrintEnv
