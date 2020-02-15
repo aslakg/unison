@@ -3,7 +3,6 @@
 {-# OPTIONS_GHC -Wno-unused-matches #-}
 {-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
 
--- {-# LANGUAGE DoAndIfThenElse     #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PartialTypeSignatures #-}
@@ -1195,13 +1194,6 @@ prettyTypeResultHeaderFull' (SR'.TypeResult' (HQ'.toHQ -> name) dt r (Set.map HQ
       fmap (\name -> prettyDeclTriple (name, r, dt))
            (name : toList aliases)
     where greyHash = styleHashQualified' id P.hiBlack
-
-
--- todo: maybe delete this
-prettyAliases ::
-  (Foldable t, ListLike s Char, IsString s) => t HQ.HashQualified -> P.Pretty s
-prettyAliases aliases = if length aliases < 2 then mempty else error "todo"
-  -- (P.commented . (:[]) . P.wrap . P.commas . fmap prettyHashQualified' . toList) aliases <> P.newline
 
 prettyDeclTriple :: Var v =>
   (HQ.HashQualified, Reference.Reference, DisplayThing (DD.Decl v a))
