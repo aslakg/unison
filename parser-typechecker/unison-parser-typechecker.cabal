@@ -160,7 +160,7 @@ library
     fingertree,
     free,
     fsnotify,
-    fsutils,
+    fsutils < 0.1.2,
     hashable,
     hashtables,
     haskeline,
