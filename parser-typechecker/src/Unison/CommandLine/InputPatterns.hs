@@ -8,6 +8,7 @@ module Unison.CommandLine.InputPatterns where
 
 import Unison.Prelude
 
+import qualified Control.Lens.Cons as Cons
 import Data.Bifunctor (first)
 import Data.List (intercalate, sortOn, isPrefixOf)
 import Data.List.Extra (nubOrdOn)
@@ -54,9 +55,11 @@ patternName :: InputPattern -> P.Pretty P.ColorText
 patternName = fromString . I.patternName
 
 -- `example list ["foo", "bar"]` (haskell) becomes `list foo bar` (pretty)
-makeExample :: InputPattern -> [P.Pretty CT.ColorText] -> P.Pretty CT.ColorText
-makeExample p args = P.group $
-  backtick (intercalateMap " " id (P.nonEmpty $ fromString (I.patternName p) : args))
+makeExample, makeExampleNoBackticks :: InputPattern -> [P.Pretty CT.ColorText] -> P.Pretty CT.ColorText
+makeExample p args = P.group . backtick $ makeExampleNoBackticks p args
+
+makeExampleNoBackticks p args =
+  P.group $ intercalateMap " " id (P.nonEmpty $ fromString (I.patternName p) : args)
 
 makeExample' :: InputPattern -> P.Pretty CT.ColorText
 makeExample' p = makeExample p []
@@ -443,6 +446,24 @@ aliasType = InputPattern "alias.type" []
       _ -> Left . warn $ P.wrap
         "`alias.type` takes two arguments, like `alias.type oldname newname`."
     )
+
+aliasMany :: InputPattern
+aliasMany = InputPattern "alias.many" ["copy"]
+  [(Required, exactDefinitionQueryArg), (OnePlus, exactDefinitionOrPathArg)]
+  (P.group . P.lines $
+    [ P.wrap $ P.group (makeExample aliasMany ["<relative1>", "[relative2...]", "<namespace>"])
+      <> "creates aliases `relative1`, `relative2`, ... in the namespace `namespace`."
+    , P.wrap $ P.group (makeExample aliasMany ["foo.foo", "bar.bar", ".quux"])
+      <> "creates aliases `.quux.foo.foo` and `.quux.bar.bar`."
+    ])
+  (\case
+    srcs@(_:_) Cons.:> dest -> first fromString $ do
+      sourceDefinitions <- traverse Path.parseHQSplit srcs
+      destNamespace <- Path.parsePath' dest
+      pure $ Input.AliasManyI sourceDefinitions destNamespace
+    _ -> Left (I.help aliasMany)
+  )
+
 
 cd :: InputPattern
 cd = InputPattern "namespace" ["cd", "j"] [(Required, pathArg)]
@@ -1150,6 +1171,7 @@ validInputs =
   , renameType
   , deleteType
   , aliasType
+  , aliasMany
   , todo
   , patch
   , link
@@ -1181,6 +1203,15 @@ fuzzyDefinitionQueryArg =
   ArgumentType "fuzzy definition query" $
     bothCompletors (termCompletor fuzzyComplete)
                    (typeCompletor fuzzyComplete)
+
+exactDefinitionOrPathArg :: ArgumentType
+exactDefinitionOrPathArg =
+  ArgumentType "definition or path" $
+    bothCompletors
+      (bothCompletors
+        (termCompletor exactComplete)
+        (typeCompletor exactComplete))
+      (pathCompletor exactComplete (Set.map Path.toText . Branch.deepPaths))
 
 -- todo: support absolute paths?
 exactDefinitionQueryArg :: ArgumentType
