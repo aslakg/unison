@@ -8,6 +8,7 @@ module Unison.CommandLine.InputPatterns where
 
 import Unison.Prelude
 
+import qualified Control.Lens.Cons as Cons
 import Data.Bifunctor (first)
 import Data.List (intercalate, sortOn, isPrefixOf)
 import Data.List.Extra (nubOrdOn)
@@ -54,9 +55,11 @@ patternName :: InputPattern -> P.Pretty P.ColorText
 patternName = fromString . I.patternName
 
 -- `example list ["foo", "bar"]` (haskell) becomes `list foo bar` (pretty)
-makeExample :: InputPattern -> [P.Pretty CT.ColorText] -> P.Pretty CT.ColorText
-makeExample p args = P.group $
-  backtick (intercalateMap " " id (P.nonEmpty $ fromString (I.patternName p) : args))
+makeExample, makeExampleNoBackticks :: InputPattern -> [P.Pretty CT.ColorText] -> P.Pretty CT.ColorText
+makeExample p args = P.group . backtick $ makeExampleNoBackticks p args
+
+makeExampleNoBackticks p args =
+  P.group $ intercalateMap " " id (P.nonEmpty $ fromString (I.patternName p) : args)
 
 makeExample' :: InputPattern -> P.Pretty CT.ColorText
 makeExample' p = makeExample p []
@@ -260,6 +263,11 @@ view = InputPattern "view" [] [(OnePlus, exactDefinitionQueryArg)]
       "`view foo` prints the definition of `foo`."
       (pure . Input.ShowDefinitionI Input.ConsoleLocation)
 
+viewData :: InputPattern
+viewData = InputPattern "data" [] [(OnePlus, exactDefinitionQueryArg)]
+      "`data foo` prints the definition of `foo` as a data structure."
+      (pure . Input.ShowDefinitionII Input.ConsoleLocation)      
+
 display :: InputPattern
 display = InputPattern "display" [] [(Required, exactDefinitionQueryArg)]
       "`display foo` prints a rendered version of the term `foo`."
@@ -438,6 +446,24 @@ aliasType = InputPattern "alias.type" []
       _ -> Left . warn $ P.wrap
         "`alias.type` takes two arguments, like `alias.type oldname newname`."
     )
+
+aliasMany :: InputPattern
+aliasMany = InputPattern "alias.many" ["copy"]
+  [(Required, exactDefinitionQueryArg), (OnePlus, exactDefinitionOrPathArg)]
+  (P.group . P.lines $
+    [ P.wrap $ P.group (makeExample aliasMany ["<relative1>", "[relative2...]", "<namespace>"])
+      <> "creates aliases `relative1`, `relative2`, ... in the namespace `namespace`."
+    , P.wrap $ P.group (makeExample aliasMany ["foo.foo", "bar.bar", ".quux"])
+      <> "creates aliases `.quux.foo.foo` and `.quux.bar.bar`."
+    ])
+  (\case
+    srcs@(_:_) Cons.:> dest -> first fromString $ do
+      sourceDefinitions <- traverse Path.parseHQSplit srcs
+      destNamespace <- Path.parsePath' dest
+      pure $ Input.AliasManyI sourceDefinitions destNamespace
+    _ -> Left (I.help aliasMany)
+  )
+
 
 cd :: InputPattern
 cd = InputPattern "namespace" ["cd", "j"] [(Required, pathArg)]
@@ -671,7 +697,7 @@ createPullRequest = InputPattern "pr.create" []
 loadPullRequest :: InputPattern
 loadPullRequest = InputPattern "pr.load" []
   [(Required, gitUrlArg), (Required, gitUrlArg), (Optional, pathArg)]
-  (P.lines 
+  (P.lines
    [P.wrap $ makeExample loadPullRequest ["base", "head"]
     <> "will load a pull request for merging the remote repo `head` into the"
     <> "remote repo `base`, staging each in the current namespace"
@@ -998,17 +1024,25 @@ viewPatch = InputPattern "view.patch" [] [(Required, patchArg)]
    )
 
 link :: InputPattern
-link = InputPattern "link" []
-  [(Required, exactDefinitionQueryArg),
-   (Required, exactDefinitionQueryArg) ]
-  "`link src dest` creates a link from `src` to `dest`. Use `links src` or `links src <type>` to view outgoing links, and `unlink src dest` to remove a link."
+link = InputPattern
+  "link"
+  []
+  [(Required, exactDefinitionQueryArg), (OnePlus, exactDefinitionQueryArg)]
+  (fromString $ concat
+    [ "`link metadata defn` creates a link to `metadata` from `defn`. "
+    , "Use `links defn` or `links defn <type>` to view outgoing links, "
+    , "and `unlink metadata defn` to remove a link. The `defn` can be either the "
+    , "name of a term or type, multiple such names, or a range like `1-4` "
+    , "for a range of definitions listed by a prior `find` command."
+    ]
+  )
   (\case
-    [src, dest] -> first fromString $ do
-      src <- Path.parseHQSplit' src
+    dest : srcs -> first fromString $ do
+      srcs <- traverse Path.parseHQSplit' srcs
       dest <- Path.parseHQSplit' dest
-      Right $ Input.LinkI src dest
+      Right $ Input.LinkI srcs dest
     _ -> Left (I.help link)
-   )
+  )
 
 links :: InputPattern
 links = InputPattern
@@ -1016,8 +1050,8 @@ links = InputPattern
   []
   [(Required, exactDefinitionQueryArg), (Optional, exactDefinitionQueryArg)]
   (P.column2 [
-    (makeExample links ["src"], "shows all outgoing links from `src`."),
-    (makeExample links ["src", "<type>"], "shows all links for the given type.") ])
+    (makeExample links ["defn"], "shows all outgoing links from `defn`."),
+    (makeExample links ["defn", "<type>"], "shows all links of the given type.") ])
   (\case
     src : rest -> first fromString $ do
       src <- Path.parseHQSplit' src
@@ -1029,17 +1063,23 @@ links = InputPattern
   )
 
 unlink :: InputPattern
-unlink = InputPattern "unlink" ["delete.link"]
-  [(Required, exactDefinitionQueryArg),
-   (Required, exactDefinitionQueryArg) ]
-  "`unlink src dest` removes a link from `src` to `dest`."
+unlink = InputPattern
+  "unlink"
+  ["delete.link"]
+  [(Required, exactDefinitionQueryArg), (OnePlus, exactDefinitionQueryArg)]
+  (fromString $ concat
+    [ "`unlink metadata defn` removes a link to `detadata` from `defn`."
+    , "The `defn` can be either the "
+    , "name of a term or type, multiple such names, or a range like `1-4` "
+    , "for a range of definitions listed by a prior `find` command."
+    ])
   (\case
-    [src, dest] -> first fromString $ do
-      src <- Path.parseHQSplit' src
+    dest : srcs -> first fromString $ do
+      srcs <- traverse Path.parseHQSplit' srcs
       dest <- Path.parseHQSplit' dest
-      Right $ Input.UnlinkI src dest
+      Right $ Input.UnlinkI srcs dest
     _ -> Left (I.help unlink)
-   )
+  )
 
 names :: InputPattern
 names = InputPattern "names" []
@@ -1115,6 +1155,8 @@ validInputs =
   , findShallow
   , findVerbose
   , view
+  , viewData
+  , viewByPrefix
   , display
   , displayTo
   , docs
@@ -1129,6 +1171,7 @@ validInputs =
   , renameType
   , deleteType
   , aliasType
+  , aliasMany
   , todo
   , patch
   , link
@@ -1160,6 +1203,15 @@ fuzzyDefinitionQueryArg =
   ArgumentType "fuzzy definition query" $
     bothCompletors (termCompletor fuzzyComplete)
                    (typeCompletor fuzzyComplete)
+
+exactDefinitionOrPathArg :: ArgumentType
+exactDefinitionOrPathArg =
+  ArgumentType "definition or path" $
+    bothCompletors
+      (bothCompletors
+        (termCompletor exactComplete)
+        (typeCompletor exactComplete))
+      (pathCompletor exactComplete (Set.map Path.toText . Branch.deepPaths))
 
 -- todo: support absolute paths?
 exactDefinitionQueryArg :: ArgumentType

@@ -74,6 +74,7 @@ data NumberedOutput v
   | ShowDiffAfterUndo PPE.PrettyPrintEnv (BranchDiffOutput v Ann)
   | ShowDiffAfterDeleteDefinitions PPE.PrettyPrintEnv (BranchDiffOutput v Ann)
   | ShowDiffAfterDeleteBranch Path.Absolute PPE.PrettyPrintEnv (BranchDiffOutput v Ann)
+  | ShowDiffAfterModifyBranch Path.Path' Path.Absolute PPE.PrettyPrintEnv (BranchDiffOutput v Ann)
   | ShowDiffAfterMerge Path.Path' Path.Absolute PPE.PrettyPrintEnv (BranchDiffOutput v Ann)
   | ShowDiffAfterMergePropagate Path.Path' Path.Absolute Path.Path' PPE.PrettyPrintEnv (BranchDiffOutput v Ann)
   | ShowDiffAfterMergePreview Path.Path' Path.Absolute PPE.PrettyPrintEnv (BranchDiffOutput v Ann)
@@ -149,6 +150,10 @@ data Output v
   | DisplayRendered (Maybe FilePath) (P.Pretty P.ColorText)
   -- "display" definitions, possibly to a FilePath on disk (e.g. editing)
   | DisplayDefinitions (Maybe FilePath)
+                       PPE.PrettyPrintEnvDecl
+                       (Map Reference (DisplayThing (Decl v Ann)))
+                       (Map Reference (DisplayThing (Term v Ann)))
+  | DisplayDefinitionsAsData (Maybe FilePath)
                        PPE.PrettyPrintEnvDecl
                        (Map Reference (DisplayThing (Decl v Ann)))
                        (Map Reference (DisplayThing (Term v Ann)))
@@ -285,6 +290,7 @@ isFailure o = case o of
   Evaluated{} -> False
   Typechecked{} -> False
   DisplayDefinitions _ _ m1 m2 -> null m1 && null m2
+  DisplayDefinitionsAsData _ _ m1 m2 -> null m1 && null m2
   DisplayRendered{} -> False
   TodoOutput _ todo -> TO.todoScore todo /= 0
   TestIncrementalOutputStart{} -> False
@@ -322,6 +328,7 @@ isNumberedFailure = \case
   ShowDiffNamespace{} -> False
   ShowDiffAfterDeleteDefinitions{} -> False
   ShowDiffAfterDeleteBranch{} -> False
+  ShowDiffAfterModifyBranch{} -> False
   ShowDiffAfterMerge{} -> False
   ShowDiffAfterMergePropagate{} -> False
   ShowDiffAfterMergePreview{} -> False

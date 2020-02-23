@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 
 {-# LANGUAGE ApplicativeDo       #-}
@@ -36,7 +37,7 @@ import           Control.Lens
 import           Control.Lens.TH                ( makeLenses )
 import           Control.Monad.State            ( StateT )
 import           Control.Monad.Trans.Except     ( ExceptT(..), runExceptT)
-import           Data.Bifunctor                 ( second )
+import           Data.Bifunctor                 ( second, first )
 import           Data.Configurator              ()
 import qualified Data.List                      as List
 import           Data.List                      ( partition, sortOn )
@@ -124,6 +125,7 @@ import Data.Tuple.Extra (uncurry3)
 import qualified Unison.CommandLine.DisplayValues as DisplayValues
 import qualified Control.Error.Util as ErrorUtil
 import Unison.Codebase.GitError (GitError)
+import Unison.Util.Monoid (intercalateMap)
 
 type F m i v = Free (Command m i v)
 type Term v a = Term.AnnotatedTerm v a
@@ -285,21 +287,24 @@ loop = do
         branchExistsSplit = branchExists . Path.unsplit'
         typeExists dest = respond . TypeAlreadyExists dest
         termExists dest = respond . TermAlreadyExists dest
+        -- | try to get these as close as possible to the command that caused the change
         inputDescription :: InputDescription
         inputDescription = case input of
           ForkLocalBranchI src dest -> "fork " <> hp' src <> " " <> p' dest
           MergeLocalBranchI src dest -> "merge " <> p' src <> " " <> p' dest
           ResetRootI src -> "reset-root " <> hp' src
           AliasTermI src dest -> "alias.term " <> hqs' src <> " " <> ps' dest
-          AliasTypeI src dest -> "alias.type" <> hqs' src <> " " <> ps' dest
+          AliasTypeI src dest -> "alias.type " <> hqs' src <> " " <> ps' dest
+          AliasManyI srcs dest ->
+            "alias.many " <> intercalateMap " " hqs srcs <> " " <> p' dest
           MoveTermI src dest -> "move.term " <> hqs' src <> " " <> ps' dest
           MoveTypeI src dest -> "move.type " <> hqs' src <> " " <> ps' dest
           MoveBranchI src dest -> "move.namespace " <> ops' src <> " " <> ps' dest
           MovePatchI src dest -> "move.patch " <> ps' src <> " " <> ps' dest
           CopyPatchI src dest -> "copy.patch " <> ps' src <> " " <> ps' dest
-          DeleteI thing -> "delete" <> hqs' thing
+          DeleteI thing -> "delete " <> hqs' thing
           DeleteTermI def -> "delete.term " <> hqs' def
-          DeleteTypeI def -> "delete.type" <> hqs' def
+          DeleteTypeI def -> "delete.type " <> hqs' def
           DeleteBranchI opath -> "delete.namespace " <> ops' opath
           DeletePatchI path -> "delete.patch " <> ps' path
           ReplaceTermI srcH targetH p ->
@@ -317,8 +322,10 @@ loop = do
           PropagatePatchI p scope -> "patch " <> ps' p <> " " <> p' scope
           UndoI{} -> "undo"
           ExecuteI s -> "execute " <> Text.pack s
-          LinkI from to -> "link " <> hqs' from <> " " <> hqs' to
-          UnlinkI from to -> "unlink " <> hqs' from <> " " <> hqs' to
+          LinkI froms to ->
+            "link " <> hqs' to <> " " <> intercalateMap " " hqs' froms
+          UnlinkI froms to ->
+            "unlink " <> hqs' to <> " " <> intercalateMap " " hqs' froms
           UpdateBuiltinsI -> "builtins.update"
           MergeBuiltinsI -> "builtins.merge"
           PullRemoteBranchI orepo dest ->
@@ -352,6 +359,7 @@ loop = do
           FindShallowI{} -> wat
           FindPatchI{} -> wat
           ShowDefinitionI{} -> wat
+          ShowDefinitionII{} -> wat
           DisplayI{} -> wat
           DocsI{} -> wat
           ShowDefinitionByPrefixI{} -> wat
@@ -373,11 +381,50 @@ loop = do
           wat = error $ show input ++ " is not expected to alter the branch"
           hqs' (p, hq) =
             Monoid.unlessM (Path.isRoot' p) (p' p) <> "." <> Text.pack (show hq)
+          hqs (p, hq) = hqs' (Path' . Right . Path.Relative $ p, hq)
           ps' = p' . Path.unsplit'
         stepAt = Unison.Codebase.Editor.HandleInput.stepAt inputDescription
         stepManyAt = Unison.Codebase.Editor.HandleInput.stepManyAt inputDescription
         stepManyAtM = Unison.Codebase.Editor.HandleInput.stepManyAtM inputDescription
         updateAtM = Unison.Codebase.Editor.HandleInput.updateAtM inputDescription
+        manageLinks :: Var v0
+                    => [(Path', NameSegment.HQSegment)]
+                    -> (Path', NameSegment.HQSegment)
+                    -> (forall r. Ord r
+                        => (r, Reference, Reference)
+                        ->  Branch.Star r NameSegment
+                        ->  Branch.Star r NameSegment)
+                    -> MaybeT (StateT (LoopState m v0) (F m (Either Event Input) v0)) ()
+        manageLinks srcs mdValue op = do
+          let srcle = toList . getHQ'Terms =<< srcs
+              srclt = toList . getHQ'Types =<< srcs
+              mdValuel = toList (getHQ'Terms mdValue)
+          case (srcle, srclt, mdValuel) of
+            (srcle, srclt, [Referent.Ref mdValue]) -> do
+              mdType <- eval $ LoadTypeOfTerm mdValue
+              case mdType of
+                Nothing -> respond $ LinkFailure input
+                Just ty -> do
+                  let steps =
+                        second (const . step $ Type.toReference ty)
+                        . first (Path.unabsolute .  resolveToAbsolute) <$> srcs
+                  let get = Branch.head <$> use root
+                  before <- get
+                  stepManyAt steps
+                  after <- get
+                  (ppe, outputDiff) <- diffHelper before after
+                  respondNumbered $ ShowDiffNamespace
+                      Path.absoluteEmpty Path.absoluteEmpty ppe outputDiff
+                where
+                step mdType b0 = let
+                  tmUpdates terms = foldl' go terms srcle
+                    where
+                    go terms src = op (src, mdType, mdValue) terms
+                  tyUpdates types = foldl' go types srclt
+                    where
+                    go types src = op (src, mdType, mdValue) types
+                  in over Branch.terms tmUpdates . over Branch.types tyUpdates $ b0
+            _ -> respond $ LinkFailure input
         delete
           :: (Path.HQSplit' -> Set Referent) -- compute matching terms
           -> (Path.HQSplit' -> Set Reference) -- compute matching types
@@ -694,6 +741,62 @@ loop = do
         p = resolveSplit' src
         oldMD r = BranchUtil.getTypeMetadataAt p r root0
 
+      -- this implementation will happily produce name conflicts,
+      -- but will surface them in a normal diff at the end of the operation.
+      AliasManyI srcs dest' -> do
+        let destAbs = resolveToAbsolute dest'
+        old <- getAt destAbs
+        let (unknown, actions) = foldl' go mempty srcs
+        stepManyAt actions
+        new <- getAt destAbs
+        diffHelper (Branch.head old) (Branch.head new) >>=
+            respondNumbered . uncurry (ShowDiffAfterModifyBranch dest' destAbs)
+        unless (null unknown) $
+          respond . SearchTermsNotFound . fmap fixupOutput $ unknown
+        where
+        -- a list of missing sources (if any) and the actions that do the work
+        go :: ([Path.HQSplit], [(Path, Branch0 m -> Branch0 m)])
+           -> Path.HQSplit 
+           -> ([Path.HQSplit], [(Path, Branch0 m -> Branch0 m)])
+        go (missingSrcs, actions) hqsrc =
+          let
+            src :: Path.Split
+            src = second HQ'.toName hqsrc
+            proposedDest :: Path.Split
+            proposedDest = second HQ'.toName hqProposedDest
+            hqProposedDest :: Path.HQSplit
+            hqProposedDest = first Path.unabsolute $
+                              Path.resolve (resolveToAbsolute dest') hqsrc
+            -- `Nothing` if src doesn't exist
+            doType :: Maybe [(Path, Branch0 m -> Branch0 m)]
+            doType = case ( BranchUtil.getType hqsrc currentBranch0
+                          , BranchUtil.getType hqProposedDest root0
+                          ) of
+              (null -> True, _) -> Nothing -- missing src
+              (rsrcs, existing) -> -- happy path
+                Just . map addAlias . toList $ Set.difference rsrcs existing
+                where
+                addAlias r = BranchUtil.makeAddTypeName proposedDest r (oldMD r)
+                oldMD r = BranchUtil.getTypeMetadataAt src r currentBranch0
+            doTerm :: Maybe [(Path, Branch0 m -> Branch0 m)]
+            doTerm = case ( BranchUtil.getTerm hqsrc currentBranch0
+                          , BranchUtil.getTerm hqProposedDest root0
+                          ) of
+              (null -> True, _) -> Nothing -- missing src
+              (rsrcs, existing) ->
+                Just . map addAlias . toList $ Set.difference rsrcs existing
+                where
+                addAlias r = BranchUtil.makeAddTermName proposedDest r (oldMD r)
+                oldMD r = BranchUtil.getTermMetadataAt src r currentBranch0
+          in case (doType, doTerm) of
+            (Nothing, Nothing) -> (missingSrcs :> hqsrc, actions)
+            (Just as, Nothing) -> (missingSrcs, actions ++ as)
+            (Nothing, Just as) -> (missingSrcs, actions ++ as)
+            (Just as1, Just as2) -> (missingSrcs, actions ++ as1 ++ as2)
+
+        fixupOutput :: Path.HQSplit -> HQ.HashQualified
+        fixupOutput = fmap Path.toName . HQ'.toHQ . Path.unsplitHQ
+
       NamesI thing -> do
         parseNames0 <- Names3.suffixify0 <$> basicParseNames0
         let filtered = case thing of
@@ -734,55 +837,11 @@ loop = do
 --                      | r <- toList $ Names.typesNamed ns name ]
 --              in (terms, types)
 
-      LinkI src mdValue -> do
-        let srcle = toList (getHQ'Terms src)
-            srclt = toList (getHQ'Types src)
-            mdValuel = toList (getHQ'Terms mdValue)
-        case (srcle, srclt, mdValuel) of
-          (srcle, srclt, [Referent.Ref mdValue])
-            | length srcle < 2 && length srclt < 2 -> do
-              mdType <- eval $ LoadTypeOfTerm mdValue
-              case mdType of
-                Nothing -> respond $ LinkFailure input
-                Just ty -> do
-                  let parent = resolveToAbsolute (fst src)
-                  let get = Branch.head <$> getAt parent
-                  before <- get
-                  stepAt (Path.unabsolute parent, step (Type.toReference ty))
-                  after <- get
-                  (ppe, outputDiff) <- diffHelper before after
-                  respondNumbered $ ShowDiffNamespace parent parent ppe outputDiff
-                where
-                step mdType b0 = let
-                  tmUpdates terms = foldl' go terms srcle where
-                    go terms src = Metadata.insert (src, mdType, mdValue) terms
-                  tyUpdates types = foldl' go types srclt where
-                    go types src = Metadata.insert (src, mdType, mdValue) types
-                  in over Branch.terms tmUpdates . over Branch.types tyUpdates $ b0
-          _ -> respond $ LinkFailure input
+      LinkI srcs mdValue ->
+        manageLinks srcs mdValue Metadata.insert
 
-      UnlinkI src mdValue -> do
-        let srcle = toList (getHQ'Terms src)
-            srclt = toList (getHQ'Types src)
-            (parent, _last) = resolveSplit' src
-            mdValuel = toList (getHQ'Terms mdValue)
-        case (srcle, srclt, mdValuel) of
-          (srcle, srclt, [Referent.Ref mdValue])
-            | length srcle < 2 && length srclt < 2 -> do
-              mdType <- eval $ LoadTypeOfTerm mdValue
-              case mdType of
-                Nothing -> respond $ LinkFailure input
-                Just ty -> do
-                  stepAt (parent, step (Type.toReference ty))
-                  success
-                where
-                step mdType b0 = let
-                  tmUpdates terms = foldl' go terms srcle where
-                    go terms src = Metadata.delete (src, mdType, mdValue) terms
-                  tyUpdates types = foldl' go types srclt where
-                    go types src = Metadata.delete (src, mdType, mdValue) types
-                  in over Branch.terms tmUpdates . over Branch.types tyUpdates $ b0
-          _ -> respond $ LinkFailure input
+      UnlinkI srcs mdValue ->
+        manageLinks srcs mdValue Metadata.delete
 
       -- > links List.map (.Docs .English)
       -- > links List.map -- give me all the
@@ -904,6 +963,76 @@ loop = do
           when (not $ null loadedDisplayTypes && null loadedDisplayTerms) $
             eval . Notify $
               DisplayDefinitions loc ppe loadedDisplayTypes loadedDisplayTerms
+          when (not $ null misses) $
+            eval . Notify . SearchTermsNotFound $ fmap fst misses
+          -- We set latestFile to be programmatically generated, if we
+          -- are viewing these definitions to a file - this will skip the
+          -- next update for that file (which will happen immediately)
+          latestFile .= ((, True) <$> loc)
+
+
+
+      ShowDefinitionII outputLoc (fmap HQ.unsafeFromString -> hqs) -> do
+        parseNames <- makeHistoricalParsingNames $ Set.fromList hqs
+        let resultss = searchBranchExact hqLength parseNames hqs
+            (misses, hits) = partition (\(_, results) -> null results) (zip hqs resultss)
+            results = List.sort . uniqueBy SR.toReferent $ hits >>= snd
+        results' <- loadSearchResults results
+        let termTypes :: Map.Map Reference (Type v Ann)
+            termTypes =
+              Map.fromList
+                [ (r, t) | SR'.Tm _ (Just t) (Referent.Ref r) _ <- results' ]
+            (collatedTypes, collatedTerms) = collateReferences
+              (mapMaybe SR'.tpReference results')
+              (mapMaybe SR'.tmReferent results')
+        -- load the `collatedTerms` and types into a Map Reference.Id Term/Type
+        -- for later
+        loadedDerivedTerms <-
+          fmap (Map.fromList . catMaybes) . for (toList collatedTerms) $ \case
+            Reference.DerivedId i -> fmap (i,) <$> eval (LoadTerm i)
+            Reference.Builtin{} -> pure Nothing
+        loadedDerivedTypes <-
+          fmap (Map.fromList . catMaybes) . for (toList collatedTypes) $ \case
+            Reference.DerivedId i -> fmap (i,) <$> eval (LoadType i)
+            Reference.Builtin{} -> pure Nothing
+        -- Populate DisplayThings for the search results, in anticipation of
+        -- displaying the definitions.
+        loadedDisplayTerms :: Map Reference (DisplayThing (Term v Ann)) <-
+          fmap Map.fromList . for (toList collatedTerms) $ \case
+          r@(Reference.DerivedId i) -> do
+            let tm = Map.lookup i loadedDerivedTerms
+            -- We add a type annotation to the term using if it doesn't
+            -- already have one that the user provided
+            pure . (r, ) $ case liftA2 (,) tm (Map.lookup r termTypes) of
+              Nothing        -> MissingThing i
+              Just (tm, typ) -> case tm of
+                Term.Ann' _ _ -> RegularThing tm
+                _ -> RegularThing (Term.ann (ABT.annotation tm) tm typ)
+          r@(Reference.Builtin _) -> pure (r, BuiltinThing)
+        let loadedDisplayTypes :: Map Reference (DisplayThing (DD.Decl v Ann))
+            loadedDisplayTypes =
+              Map.fromList . (`fmap` toList collatedTypes) $ \case
+                r@(Reference.DerivedId i) ->
+                  (r,) . maybe (MissingThing i) RegularThing
+                        $ Map.lookup i loadedDerivedTypes
+                r@(Reference.Builtin _) -> (r, BuiltinThing)
+        -- the SR' deps include the result term/type names, and the
+        let deps = foldMap SR'.labeledDependencies results'
+                <> foldMap Term.labeledDependencies loadedDerivedTerms
+        printNames <- makePrintNamesFromLabeled' deps
+
+        -- We might like to make sure that the user search terms get used as
+        -- the names in the pretty-printer, but the current implementation
+        -- doesn't.
+        ppe <- prettyPrintEnvDecl printNames
+        let loc = case outputLoc of
+              ConsoleLocation    -> Nothing
+              FileLocation path  -> Just path
+              LatestFileLocation -> fmap fst latestFile' <|> Just "scratch.u"
+        do
+          when (not $ null loadedDisplayTypes && null loadedDisplayTerms) $
+            eval . Notify $
+              DisplayDefinitionsAsData loc ppe loadedDisplayTypes loadedDisplayTerms
           when (not $ null misses) $
             eval . Notify . SearchTermsNotFound $ fmap fst misses
           -- We set latestFile to be programmatically generated, if we
@@ -1766,7 +1895,8 @@ respond output = eval $ Notify output
 respondNumbered :: NumberedOutput v -> Action m i v ()
 respondNumbered output = do
   args <- eval $ NotifyNumbered output
-  numberedArgs .= toList args
+  unless (null args) $
+    numberedArgs .= toList args
 
 -- Merges the specified remote branch into the specified local absolute path.
 -- Implementation detail of PullRemoteBranchI

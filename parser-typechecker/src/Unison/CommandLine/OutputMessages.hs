@@ -3,7 +3,6 @@
 {-# OPTIONS_GHC -Wno-unused-matches #-}
 {-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
 
--- {-# LANGUAGE DoAndIfThenElse     #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PartialTypeSignatures #-}
@@ -28,7 +27,7 @@ import qualified Unison.Codebase.Editor.Output.BranchDiff as OBD
 import           Control.Lens
 import qualified Control.Monad.State.Strict    as State
 import           Data.Bifunctor                (bimap, first)
-import           Data.List                     (sortOn, stripPrefix)
+import           Data.List                     (sort, sortOn, stripPrefix)
 import           Data.List.Extra               (nubOrdOn, nubOrd)
 import           Data.ListLike                 (ListLike)
 import qualified Data.Map                      as Map
@@ -128,21 +127,32 @@ renderFileName dir = P.group . P.blue . fromString <$> shortenDirectory dir
 notifyNumbered :: Var v => NumberedOutput v -> (Pretty, NumberedArgs)
 notifyNumbered o = case o of
   ShowDiffNamespace oldPrefix newPrefix ppe diffOutput ->
-    showDiffNamespace ppe oldPrefix newPrefix diffOutput
+    showDiffNamespace ShowNumbers ppe oldPrefix newPrefix diffOutput
 
   ShowDiffAfterDeleteDefinitions ppe diff ->
     first (\p -> P.lines
       [ p
       , ""
       , undoTip
-      ]) (showDiffNamespace ppe e e diff)
+      ]) (showDiffNamespace ShowNumbers ppe e e diff)
 
   ShowDiffAfterDeleteBranch bAbs ppe diff ->
     first (\p -> P.lines
       [ p
       , ""
       , undoTip
-      ]) (showDiffNamespace ppe bAbs bAbs diff)
+      ]) (showDiffNamespace ShowNumbers ppe bAbs bAbs diff)
+
+  ShowDiffAfterModifyBranch b' _ _ (OBD.isEmpty -> True) ->
+    (P.wrap $ "Nothing changed in" <> prettyPath' b' <> ".", mempty)
+  ShowDiffAfterModifyBranch b' bAbs ppe diff ->
+    first (\p -> P.lines
+      [ P.wrap $ "Here's what changed in" <> prettyPath' b' <> ":"
+      , ""
+      , p
+      , ""
+      , undoTip
+      ]) (showDiffNamespace ShowNumbers ppe bAbs bAbs diff)
 
   ShowDiffAfterMerge _ _ _ (OBD.isEmpty -> True) ->
     (P.wrap $ "Nothing changed as a result of the merge.", mempty)
@@ -157,7 +167,7 @@ notifyNumbered o = case o of
            <> "and " <> IP.makeExample' IP.test <> "to run the tests."
            <> "Or you can use" <> IP.makeExample' IP.undo <> " or"
            <> IP.makeExample' IP.viewReflog <> " to undo the results of this merge."
-      ]) (showDiffNamespace ppe destAbs destAbs diffOutput)
+      ]) (showDiffNamespace ShowNumbers ppe destAbs destAbs diffOutput)
 
   ShowDiffAfterMergePropagate dest' destAbs patchPath' ppe diffOutput ->
     first (\p -> P.lines [
@@ -172,18 +182,18 @@ notifyNumbered o = case o of
            <> "and " <> IP.makeExample' IP.test <> "to run the tests."
            <> "Or you can use" <> IP.makeExample' IP.undo <> " or"
            <> IP.makeExample' IP.viewReflog <> " to undo the results of this merge."
-      ]) (showDiffNamespace ppe destAbs destAbs diffOutput)
+      ]) (showDiffNamespace ShowNumbers ppe destAbs destAbs diffOutput)
 
   ShowDiffAfterMergePreview dest' destAbs ppe diffOutput ->
     first (\p -> P.lines [
       P.wrap $ "Here's what would change in " <> prettyPath' dest' <> "after the merge:"
       , ""
       , p
-      ]) (showDiffNamespace ppe destAbs destAbs diffOutput)
+      ]) (showDiffNamespace ShowNumbers ppe destAbs destAbs diffOutput)
 
   ShowDiffAfterUndo ppe diffOutput ->
     first (\p -> P.lines ["Here's the changes I undid", "", p ])
-      (showDiffNamespace ppe e e diffOutput)
+      (showDiffNamespace ShowNumbers ppe e e diffOutput)
 
   ShowDiffAfterPull dest' destAbs ppe diff ->
     if OBD.isEmpty diff then
@@ -194,7 +204,7 @@ notifyNumbered o = case o of
           p, "",
           undoTip
         ])
-        (showDiffNamespace ppe destAbs destAbs diff)
+        (showDiffNamespace ShowNumbers ppe destAbs destAbs diff)
   ShowDiffAfterCreatePR baseRepo headRepo ppe diff ->
     if OBD.isEmpty diff then
       (P.wrap $ "Looks like there's no difference between "
@@ -208,10 +218,11 @@ notifyNumbered o = case o of
                  <> "using the following command:"
         ,""
         ,P.indentN 2 $
-          IP.makeExample IP.loadPullRequest [(prettyRemoteNamespace baseRepo)
-                                            ,(prettyRemoteNamespace headRepo)]
+          IP.makeExampleNoBackticks
+            IP.loadPullRequest [(prettyRemoteNamespace baseRepo)
+                               ,(prettyRemoteNamespace headRepo)]
         ,""
-        ,p])) (showDiffNamespace ppe e e diff)
+        ,p])) (showDiffNamespace HideNumbers ppe e e diff)
         -- todo: these numbers aren't going to work,
         --  since the content isn't necessarily here.
         -- Should we have a mode with no numbers? :P
@@ -272,6 +283,8 @@ notifyUser dir o = case o of
 
   DisplayDefinitions outputLoc ppe types terms ->
     displayDefinitions outputLoc ppe types terms
+  DisplayDefinitionsAsData outputLoc ppe types terms ->
+    displayDefinitionsAsData outputLoc ppe types terms    
   DisplayRendered outputLoc pp ->
     displayRendered outputLoc pp
   DisplayLinks ppe md types terms ->
@@ -991,6 +1004,41 @@ displayDefinitions' ppe0 types terms = P.syntaxToColor $ P.sep "\n\n" (prettyTyp
     <> P.newline
     <> tip "You might need to repair the codebase manually."
 
+
+displayDefinitionsAsData' :: Var v => Ord a1
+  => PPE.PrettyPrintEnvDecl
+  -> Map Reference.Reference (DisplayThing (DD.Decl v a1))
+  -> Map Reference.Reference (DisplayThing (Unison.Term.AnnotatedTerm v a1))
+  -> Pretty
+displayDefinitionsAsData' ppe0 types terms = P.syntaxToColor $ P.sep "\n\n" (prettyTypes <> prettyTerms)
+  where
+  ppeBody r = PPE.declarationPPE ppe0 r
+  ppeDecl = PPE.unsuffixifiedPPE ppe0
+  prettyTerms = map go . Map.toList
+              -- sort by name
+              $ Map.mapKeys (first (PPE.termName ppeDecl . Referent.Ref) . dupe) terms
+  prettyTypes = map go2 . Map.toList
+              $ Map.mapKeys (first (PPE.typeName ppeDecl) . dupe) types
+  go ((n, r), dt) =
+    case dt of
+      MissingThing r -> missing n r
+      BuiltinThing -> builtin n
+      RegularThing tm -> P.string $ show tm -- TermPrinter.prettyBinding (ppeBody r) n tm
+  go2 ((n, r), dt) =
+    case dt of
+      MissingThing r -> missing n r
+      BuiltinThing -> builtin n
+      RegularThing decl -> case decl of
+        Left d  -> DeclPrinter.prettyEffectDecl (ppeBody r) r n d
+        Right d -> DeclPrinter.prettyDataDecl (ppeBody r) r n d
+  builtin n = P.wrap $ "--" <> prettyHashQualified n <> " is built-in."
+  missing n r = P.wrap (
+    "-- The name " <> prettyHashQualified n <> " is assigned to the "
+    <> "reference " <> fromString (show r ++ ",")
+    <> "which is missing from the codebase.")
+    <> P.newline
+    <> tip "You might need to repair the codebase manually."
+
 displayRendered :: Maybe FilePath -> Pretty -> IO Pretty
 displayRendered outputLoc pp =
   maybe (pure pp) scratchAndDisplay outputLoc
@@ -1051,6 +1099,44 @@ displayDefinitions outputLoc ppe types terms =
           "to replace the definitions currently in this namespace."
       ]
   code = displayDefinitions' ppe types terms
+
+displayDefinitionsAsData :: Var v => Ord a1 =>
+  Maybe FilePath
+  -> PPE.PrettyPrintEnvDecl
+  -> Map Reference.Reference (DisplayThing (DD.Decl v a1))
+  -> Map Reference.Reference (DisplayThing (Unison.Term.AnnotatedTerm v a1))
+  -> IO Pretty
+displayDefinitionsAsData outputLoc ppe types terms | Map.null types && Map.null terms =
+  pure $ P.callout "😶" "No results to display."
+displayDefinitionsAsData outputLoc ppe types terms =
+  maybe displayOnly scratchAndDisplay outputLoc
+  where
+  displayOnly = pure code
+  scratchAndDisplay path = do
+    path' <- canonicalizePath path
+    prependToFile code path'
+    pure (message code path')
+    where
+    prependToFile code path = do
+      existingContents <- do
+        exists <- doesFileExist path
+        if exists then readFile path
+        else pure ""
+      writeFile path . Text.pack . P.toPlain 80 $
+        P.lines [ code, ""
+                , "---- " <> "Anything below this line is ignored by Unison."
+                , "", P.text existingContents ]
+    message code path =
+      P.callout "☝️" $ P.lines [
+        P.wrap $ "I added these definitions to the top of " <> fromString path,
+        "",
+        P.indentN 2 code,
+        "",
+        P.wrap $
+          "You can edit them there, then do" <> makeExample' IP.update <>
+          "to replace the definitions currently in this namespace."
+      ]
+  code = displayDefinitionsAsData' ppe types terms  
 
 displayTestResults :: Bool -- whether to show the tip
                    -> PPE.PrettyPrintEnv
@@ -1120,13 +1206,6 @@ prettyTypeResultHeaderFull' (SR'.TypeResult' (HQ'.toHQ -> name) dt r (Set.map HQ
       fmap (\name -> prettyDeclTriple (name, r, dt))
            (name : toList aliases)
     where greyHash = styleHashQualified' id P.hiBlack
-
-
--- todo: maybe delete this
-prettyAliases ::
-  (Foldable t, ListLike s Char, IsString s) => t HQ.HashQualified -> P.Pretty s
-prettyAliases aliases = if length aliases < 2 then mempty else error "todo"
-  -- (P.commented . (:[]) . P.wrap . P.commas . fmap prettyHashQualified' . toList) aliases <> P.newline
 
 prettyDeclTriple :: Var v =>
   (HQ.HashQualified, Reference.Reference, DisplayThing (DD.Decl v a))
@@ -1288,15 +1367,20 @@ listOfLinks ppe results = pure $ P.lines [
   prettyType Nothing = "❓ (missing a type for this definition)"
   prettyType (Just t) = TypePrinter.pretty ppe t
 
+data ShowNumbers = ShowNumbers | HideNumbers
+-- | `ppe` is just for rendering type signatures
+--   `oldPath, newPath :: Path.Absolute` are just for producing fully-qualified
+--                                       numbered args
 showDiffNamespace :: forall v . Var v
-                  => PPE.PrettyPrintEnv
+                  => ShowNumbers
+                  -> PPE.PrettyPrintEnv
                   -> Path.Absolute
                   -> Path.Absolute
                   -> OBD.BranchDiffOutput v Ann
                   -> (Pretty, NumberedArgs)
-showDiffNamespace _ _ _ diffOutput | OBD.isEmpty diffOutput =
+showDiffNamespace _ _ _ _ diffOutput | OBD.isEmpty diffOutput =
   ("The namespaces are identical.", mempty)
-showDiffNamespace ppe oldPath newPath OBD.BranchDiffOutput{..} =
+showDiffNamespace sn ppe oldPath newPath OBD.BranchDiffOutput{..} =
   (P.sepNonEmpty "\n\n" p, toList args)
   where
   (p, (menuSize, args)) = (`State.runState` (0::Int, Seq.empty)) $ sequence [
@@ -1621,10 +1705,12 @@ showDiffNamespace ppe oldPath newPath OBD.BranchDiffOutput{..} =
     hq' = HQ'.requalify (fmap (Name.makeAbsolute . Path.prefixName prefix) hq) r
 
   addNumberedArg :: String -> Numbered Pretty
-  addNumberedArg s = do
+  addNumberedArg s = case sn of
+   ShowNumbers -> do
     (n, args) <- State.get
     State.put (n+1, args Seq.|> s)
     pure $ padNumber (n+1)
+   HideNumbers -> pure mempty
 
   padNumber :: Int -> Pretty
   padNumber n = P.hiBlack . P.rightPad leftNumsWidth $ P.shown n <> "."
@@ -1741,7 +1827,7 @@ prettyDiff diff = let
                        , not $ R.memberRan r (Names.terms0 removes) ]
   addedTypes = [ (n,r) | (n,r) <- R.toList (Names.types0 adds)
                        , not $ R.memberRan r (Names.types0 removes) ]
-  added = HQ'.sort (hqTerms ++ hqTypes)
+  added = sort (hqTerms ++ hqTypes)
     where
       hqTerms = [ Names.hqName adds n (Right r) | (n, r) <- addedTerms ]
       hqTypes = [ Names.hqName adds n (Left r)  | (n, r) <- addedTypes ]
@@ -1754,7 +1840,7 @@ prettyDiff diff = let
                          , not $ R.memberRan r (Names.types0 adds)
                          , Set.notMember n addedTypesSet ] where
     addedTypesSet = Set.fromList (map fst addedTypes)
-  removed = HQ'.sort (hqTerms ++ hqTypes)
+  removed = sort (hqTerms ++ hqTypes)
     where
       hqTerms = [ Names.hqName removes n (Right r) | (n, r) <- removedTerms ]
       hqTypes = [ Names.hqName removes n (Left r)  | (n, r) <- removedTypes ]

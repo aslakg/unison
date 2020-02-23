@@ -1,4 +1,3 @@
-
 ```unison
 x = 23
 ```
@@ -66,8 +65,8 @@ fslkdjflskdjflksjdf = 663
   Name changes:
   
     Original                             Changes
-    4. x                              ┐  5. abc (added)
-    6. fslkdjflskdjflksjdf#4kipsv2tm6 ┘  7. fslkdjflskdjflksjdf (added)
+    4. fslkdjflskdjflksjdf#4kipsv2tm6 ┐  5. abc (added)
+    6. x                              ┘  7. fslkdjflskdjflksjdf (added)
                                          8. fslkdjflskdjflksjdf#4kipsv2tm6 (removed)
 
 ```
@@ -117,14 +116,14 @@ ability X a1 a2 where x : Nat
 
   Done.
 
-.ns1> link fromJust b
+.ns1> link b fromJust
 
   Updates:
   
-    1. fromJust : Nat
+    1. ns1.fromJust : Nat
        + 2. b : Nat
     
-    3. fromJust' : Nat
+    3. ns1.fromJust' : Nat
        + 4. b : Nat
 
 .ns1> fork .ns1 .ns2
@@ -304,18 +303,18 @@ unique type Y a b = Y a b
     
     19. X    20. X' (added)
 
-.> link ns2.f ns1.c
+.> link ns1.c ns2.f
 
   Updates:
   
-    1. f : Nat
+    1. ns2.f : Nat
        + 2. c : Nat
 
 .> link ns2.c ns2.c
 
   Updates:
   
-    1. c : Nat
+    1. ns2.c : Nat
        + 2. c : Nat
 
 .> diff.namespace ns1 ns2
@@ -362,9 +361,9 @@ unique type Y a b = Y a b
     
     21. X    22. X' (added)
 
-.> unlink ns2.fromJust ns2.b
+.> unlink ns2.b ns2.fromJust
 
-  Done.
+  The namespaces are identical.
 
 .> diff.namespace ns1 ns2
 
@@ -677,14 +676,14 @@ New name conflicts: -- updates where RHS has multiple hashes (excluding when RHS
   1. foo#jk19sm5bf8 : Nat - do we want to force a hashqualified? Arya thinks so
      ↓
   2. ┌ foo#0ja1qfpej6 : Nat
-  3. └ foo#jk19sm5bf8 : Nat  
+  3. └ foo#jk19sm5bf8 : Nat
 
 Resolved name conflicts: -- updates where LHS had multiple hashes and RHS has one
 
   4. ┌ bar#0ja1qfpej6 : Nat
-  5. └ bar#jk19sm5bf8 : Nat  
+  5. └ bar#jk19sm5bf8 : Nat
      ↓
-  6. bar#jk19sm5bf8 : Nat  
+  6. bar#jk19sm5bf8 : Nat
 
 ## Display issues to fixup
 

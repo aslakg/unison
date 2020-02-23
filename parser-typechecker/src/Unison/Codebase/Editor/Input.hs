@@ -62,6 +62,7 @@ data Input
     | NamesI HQ.HashQualified
     | AliasTermI Path.HQSplit' Path.Split'
     | AliasTypeI Path.HQSplit' Path.Split'
+    | AliasManyI [Path.HQSplit] Path'
     -- Move = Rename; It's an HQSplit' not an HQSplit', meaning the arg has to have a name.
     | MoveTermI Path.HQSplit' Path.Split'
     | MoveTypeI Path.HQSplit' Path.Split'
@@ -106,9 +107,9 @@ data Input
   | TestI Bool Bool -- TestI showSuccesses showFailures
   -- metadata
   -- link from to
-  | LinkI Path.HQSplit' Path.HQSplit'
+  | LinkI [Path.HQSplit'] Path.HQSplit'
   -- unlink from to
-  | UnlinkI Path.HQSplit' Path.HQSplit'
+  | UnlinkI [Path.HQSplit'] Path.HQSplit'
   -- links from <type>
   | LinksI Path.HQSplit' (Maybe String)
   | DisplayI OutputLocation String
@@ -118,6 +119,7 @@ data Input
   | FindShallowI Path'
   | FindPatchI
   | ShowDefinitionI OutputLocation [String]
+  | ShowDefinitionII OutputLocation [String]
   | ShowDefinitionByPrefixI OutputLocation [String]
   | ShowReflogI
   | UpdateBuiltinsI
