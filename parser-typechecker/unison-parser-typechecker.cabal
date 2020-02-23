@@ -41,99 +41,99 @@ library
     Unison.Codebase.BranchDiff
     Unison.Codebase.BranchLoadMode
     Unison.Codebase.BranchUtil
-    -- Unison.Codebase.Causal
-    -- Unison.Codebase.Classes
-    -- Unison.Codebase.CodeLookup
-    -- Unison.Codebase.Editor.Command
-    -- Unison.Codebase.Editor.DisplayThing
-    -- Unison.Codebase.Editor.Git
-    -- Unison.Codebase.Editor.HandleInput
-    -- Unison.Codebase.Editor.HandleCommand
-    -- Unison.Codebase.Editor.Input
-    -- Unison.Codebase.Editor.Output
-    -- Unison.Codebase.Editor.Output.BranchDiff
-    -- Unison.Codebase.Editor.Propagate
-    -- Unison.Codebase.Editor.RemoteRepo
-    -- Unison.Codebase.Editor.SearchResult'
-    -- Unison.Codebase.Editor.SlurpResult
-    -- Unison.Codebase.Editor.SlurpComponent
-    -- Unison.Codebase.Editor.TodoOutput
-    -- Unison.Codebase.Editor.UriParser
-    -- Unison.Codebase.FileCodebase
-    -- Unison.Codebase.GitError
-    -- Unison.Codebase.Metadata
-    -- Unison.Codebase.NameEdit
-    -- Unison.Codebase.Path
-    -- Unison.Codebase.Patch
-    -- Unison.Codebase.Reflog
-    -- Unison.Codebase.Runtime
-    -- Unison.Codebase.SearchResult
-    -- Unison.Codebase.Serialization
-    -- Unison.Codebase.Serialization.PutT
-    -- Unison.Codebase.Serialization.V1
-    -- Unison.Codebase.ShortBranchHash
-    -- Unison.Codebase.TermEdit
-    -- Unison.Codebase.TranscriptParser
-    -- Unison.Codebase.TypeEdit
-    -- Unison.Codebase.Watch
-    -- Unison.Codebase.Execute
-    -- Unison.Codebase.MainTerm
-    -- Unison.CommandLine
-    -- Unison.CommandLine.DisplayValues
-    -- Unison.CommandLine.InputPattern
-    -- Unison.CommandLine.InputPatterns
-    -- Unison.CommandLine.Main
-    -- Unison.CommandLine.OutputMessages
-    -- Unison.DeclPrinter
-    -- Unison.FileParser
-    -- Unison.FileParsers
-    -- Unison.Lexer
-    -- Unison.NamePrinter
-    -- Unison.Parser
-    -- Unison.Parsers
-    -- Unison.Path
-    -- Unison.PrettyPrintEnv
-    -- Unison.PrettyTerminal
-    -- Unison.PrintError
-    -- Unison.Result
-    -- Unison.Runtime.ANF
-    -- Unison.Runtime.IR
-    -- Unison.Runtime.Rt1
-    -- Unison.Runtime.Rt1IO
-    -- Unison.Runtime.IOSource
-    -- Unison.Runtime.Vector
-    -- Unison.Runtime.SparseVector
-    -- Unison.TermParser
-    -- Unison.TermPrinter
-    -- Unison.TypeParser
-    -- Unison.TypePrinter
-    -- Unison.Typechecker
-    -- Unison.Typechecker.Components
-    -- Unison.Typechecker.Context
-    -- Unison.Typechecker.Extractor
-    -- Unison.Typechecker.TypeError
-    -- Unison.Typechecker.TypeLookup
-    -- Unison.Typechecker.TypeVar
-    -- Unison.UnisonFile
-    -- Unison.Util.AnnotatedText
-    -- Unison.Util.Bytes
-    -- Unison.Util.ColorText
-    -- Unison.Util.Exception
-    -- Unison.Util.Free
-    -- Unison.Util.Find
-    -- Unison.Util.Less
-    -- Unison.Util.Logger
-    -- Unison.Util.Map
-    -- Unison.Util.Menu
-    -- Unison.Util.Pretty
-    -- Unison.Util.Range
-    -- Unison.Util.Star3
-    -- Unison.Util.SyntaxText
-    -- Unison.Util.TQueue
-    -- Unison.Util.TransitiveClosure
-    -- Unison.Util.CycleTable
-    -- Unison.Util.CyclicEq
-    -- Unison.Util.CyclicOrd
+    Unison.Codebase.Causal
+    Unison.Codebase.Classes
+    Unison.Codebase.CodeLookup
+    Unison.Codebase.Editor.Command
+    Unison.Codebase.Editor.DisplayThing
+    Unison.Codebase.Editor.Git
+    Unison.Codebase.Editor.HandleInput
+    Unison.Codebase.Editor.HandleCommand
+    Unison.Codebase.Editor.Input
+    Unison.Codebase.Editor.Output
+    Unison.Codebase.Editor.Output.BranchDiff
+    Unison.Codebase.Editor.Propagate
+    Unison.Codebase.Editor.RemoteRepo
+    Unison.Codebase.Editor.SearchResult'
+    Unison.Codebase.Editor.SlurpResult
+    Unison.Codebase.Editor.SlurpComponent
+    Unison.Codebase.Editor.TodoOutput
+    Unison.Codebase.Editor.UriParser
+    Unison.Codebase.FileCodebase
+    Unison.Codebase.GitError
+    Unison.Codebase.Metadata
+    Unison.Codebase.NameEdit
+    Unison.Codebase.Path
+    Unison.Codebase.Patch
+    Unison.Codebase.Reflog
+    Unison.Codebase.Runtime
+    Unison.Codebase.SearchResult
+    Unison.Codebase.Serialization
+    Unison.Codebase.Serialization.PutT
+    Unison.Codebase.Serialization.V1
+    Unison.Codebase.ShortBranchHash
+    Unison.Codebase.TermEdit
+    Unison.Codebase.TranscriptParser
+    Unison.Codebase.TypeEdit
+    Unison.Codebase.Watch
+    Unison.Codebase.Execute
+    Unison.Codebase.MainTerm
+    Unison.CommandLine
+    Unison.CommandLine.DisplayValues
+    Unison.CommandLine.InputPattern
+    Unison.CommandLine.InputPatterns
+    Unison.CommandLine.Main
+    Unison.CommandLine.OutputMessages
+    Unison.DeclPrinter
+    Unison.FileParser
+    Unison.FileParsers
+    Unison.Lexer
+    Unison.NamePrinter
+    Unison.Parser
+    Unison.Parsers
+    Unison.Path
+    Unison.PrettyPrintEnv
+    Unison.PrettyTerminal
+    Unison.PrintError
+    Unison.Result
+    Unison.Runtime.ANF
+    Unison.Runtime.IR
+    Unison.Runtime.Rt1
+    Unison.Runtime.Rt1IO
+    Unison.Runtime.IOSource
+    Unison.Runtime.Vector
+    Unison.Runtime.SparseVector
+    Unison.TermParser
+    Unison.TermPrinter
+    Unison.TypeParser
+    Unison.TypePrinter
+    Unison.Typechecker
+    Unison.Typechecker.Components
+    Unison.Typechecker.Context
+    Unison.Typechecker.Extractor
+    Unison.Typechecker.TypeError
+    Unison.Typechecker.TypeLookup
+    Unison.Typechecker.TypeVar
+    Unison.UnisonFile
+    Unison.Util.AnnotatedText
+    Unison.Util.Bytes
+    Unison.Util.ColorText
+    Unison.Util.Exception
+    Unison.Util.Free
+    Unison.Util.Find
+    Unison.Util.Less
+    Unison.Util.Logger
+    Unison.Util.Map
+    Unison.Util.Menu
+    Unison.Util.Pretty
+    Unison.Util.Range
+    Unison.Util.Star3
+    Unison.Util.SyntaxText
+    Unison.Util.TQueue
+    Unison.Util.TransitiveClosure
+    Unison.Util.CycleTable
+    Unison.Util.CyclicEq
+    Unison.Util.CyclicOrd
 
   build-depends:
     ansi-terminal,
@@ -148,14 +148,14 @@ library
     concurrent-supply,
     configurator,
     cryptonite,
-    -- directory,
+    directory,
     guid,
     data-memocombinators,
     edit-distance,
     errors,
     exceptions,
     extra,
-    -- filepath,
+    filepath,
     filepattern,
     fingertree,
     free,
