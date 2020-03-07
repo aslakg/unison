@@ -118,13 +118,13 @@ We can also delete the fork if we're done with it. (Don't worry, it's still in t
   Note: The most recent namespace hash is immediately below this
         message.
   
-  ⊙ #mvnif5tqv4
+  ⊙ #ej4b7k7gup
   
     - Deletes:
     
       feature1.y
   
-  ⊙ #8645kmch8f
+  ⊙ #t65ghfeidi
   
     + Adds / updates:
     
@@ -135,26 +135,26 @@ We can also delete the fork if we're done with it. (Don't worry, it's still in t
       Original name New name(s)
       feature1.y    master.y
   
-  ⊙ #a0nelord48
+  ⊙ #5m92mmhj69
   
     + Adds / updates:
     
       feature1.y
   
-  ⊙ #5kgteqptdh
+  ⊙ #tc6nvhv93h
   
     > Moves:
     
       Original name New name
       x             master.x
   
-  ⊙ #bgdli5t6pn
+  ⊙ #3v6biscq0t
   
     + Adds / updates:
     
       x
   
-  ⊙ #v3fli7se11
+  ⊙ #upd8bubg9e
   
     + Adds / updates:
     
@@ -392,9 +392,11 @@ master.frobnicate n = n + 1
   
     master.frobnicate : builtin.Nat -> builtin.Nat
   
-  ⍟ I've updated to these definitions:
+  ⍟ I've updated these names to your new definition:
   
     master.y : builtin.Text
+      (The old definition was also named feature2.y. I updated
+      this name too.)
 
 .> view master.y
 

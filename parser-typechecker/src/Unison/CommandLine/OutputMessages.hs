@@ -87,7 +87,7 @@ import qualified Unison.Referent               as Referent
 import           Unison.Referent               ( Referent )
 import qualified Unison.Result                 as Result
 import qualified Unison.Term                   as Term
-import           Unison.Term                   (AnnotatedTerm)
+import           Unison.Term                   (Term)
 import           Unison.Type                   (Type)
 import qualified Unison.TermPrinter            as TermPrinter
 import qualified Unison.TypePrinter            as TypePrinter
@@ -875,7 +875,8 @@ notifyUser dir o = case o of
       ]
     ex = "Use" <> IP.makeExample IP.history ["#som3n4m3space"]
                <> "to view history starting from a given namespace hash."
-
+  StartOfCurrentPathHistory -> pure $
+    P.wrap "You're already at the very beginning! 🙂"
   PullAlreadyUpToDate ns dest -> pure . P.callout "😶" $
     P.wrap $ prettyPath' dest <> "was already up-to-date with"
           <> P.group (prettyRemoteNamespace ns <> ".")
@@ -973,7 +974,7 @@ formatMissingStuff terms types =
 displayDefinitions' :: Var v => Ord a1
   => PPE.PrettyPrintEnvDecl
   -> Map Reference.Reference (DisplayThing (DD.Decl v a1))
-  -> Map Reference.Reference (DisplayThing (Unison.Term.AnnotatedTerm v a1))
+  -> Map Reference.Reference (DisplayThing (Term v a1))
   -> Pretty
 displayDefinitions' ppe0 types terms = P.syntaxToColor $ P.sep "\n\n" (prettyTypes <> prettyTerms)
   where
@@ -1066,7 +1067,7 @@ displayDefinitions :: Var v => Ord a1 =>
   Maybe FilePath
   -> PPE.PrettyPrintEnvDecl
   -> Map Reference.Reference (DisplayThing (DD.Decl v a1))
-  -> Map Reference.Reference (DisplayThing (Unison.Term.AnnotatedTerm v a1))
+  -> Map Reference.Reference (DisplayThing (Term v a1))
   -> IO Pretty
 displayDefinitions outputLoc ppe types terms | Map.null types && Map.null terms =
   pure $ P.callout "😶" "No results to display."
@@ -1773,7 +1774,7 @@ watchPrinter
   -> PPE.PrettyPrintEnv
   -> Ann
   -> UF.WatchKind
-  -> Codebase.Term v ()
+  -> Term v ()
   -> Runtime.IsCacheHit
   -> Pretty
 watchPrinter src ppe ann kind term isHit =
@@ -1899,7 +1900,7 @@ prettyDiff diff = let
      else mempty
    ]
 
-isTestOk :: Codebase.Term v Ann -> Bool
+isTestOk :: Term v Ann -> Bool
 isTestOk tm = case tm of
   Term.Sequence' ts -> all isSuccess ts where
     isSuccess (Term.App' (Term.Constructor' ref cid) _) =

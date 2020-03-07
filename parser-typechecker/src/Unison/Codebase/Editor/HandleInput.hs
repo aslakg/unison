@@ -16,7 +16,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE EmptyCase #-}
 
-module Unison.Codebase.Editor.HandleInput (loop, loopState0, LoopState(..), parseSearchType) where
+module Unison.Codebase.Editor.HandleInput (loop, loopState0, LoopState(..), currentPath, parseSearchType) where
 
 import Unison.Prelude
 
@@ -115,6 +115,7 @@ import Unison.Codebase.Editor.SearchResult' (SearchResult')
 import qualified Unison.Codebase.Editor.SearchResult' as SR'
 import qualified Unison.LabeledDependency as LD
 import Unison.LabeledDependency (LabeledDependency)
+import Unison.Term (Term)
 import Unison.Type (Type)
 import qualified Unison.Builtin as Builtin
 import Unison.Codebase.NameSegment (NameSegment(..))
@@ -126,9 +127,10 @@ import qualified Unison.CommandLine.DisplayValues as DisplayValues
 import qualified Control.Error.Util as ErrorUtil
 import Unison.Codebase.GitError (GitError)
 import Unison.Util.Monoid (intercalateMap)
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as Nel
 
 type F m i v = Free (Command m i v)
-type Term v a = Term.AnnotatedTerm v a
 
 -- type (Action m i v) a
 type Action m i v = MaybeT (StateT (LoopState m v) (F m i v))
@@ -140,7 +142,7 @@ data LoopState m v
   = LoopState
       { _root :: Branch m
       -- the current position in the namespace
-      , _currentPath :: Path.Absolute
+      , _currentPathStack :: NonEmpty Path.Absolute
 
       -- TBD
       -- , _activeEdits :: Set Branch.EditGuid
@@ -166,8 +168,12 @@ type InputDescription = Text
 
 makeLenses ''LoopState
 
+-- replacing the old read/write scalar Lens with "peek" Getter for the NonEmpty
+currentPath :: Getter (LoopState m v) Path.Absolute
+currentPath = currentPathStack . to Nel.head
+
 loopState0 :: Branch m -> Path.Absolute -> LoopState m v
-loopState0 b p = LoopState b p Nothing Nothing Nothing []
+loopState0 b p = LoopState b (pure p) Nothing Nothing Nothing []
 
 type Action' m v = Action m (Either Event Input) v
 
@@ -349,6 +355,7 @@ loop = do
           PreviewMergeLocalBranchI{} -> wat
           DiffNamespaceI{} -> wat
           SwitchBranchI{} -> wat
+          PopBranchI{} -> wat
           NamesI{} -> wat
           TodoI{} -> wat
           ListEditsI{} -> wat
@@ -679,9 +686,13 @@ loop = do
 
       SwitchBranchI path' -> do
         let path = resolveToAbsolute path'
-        currentPath .= path
+        currentPathStack %= Nel.cons path
         branch' <- getAt path
         when (Branch.isEmpty branch') (respond $ CreatedNewBranch path)
+
+      PopBranchI -> use (currentPathStack . to Nel.uncons) >>= \case
+        (_, Nothing) -> respond StartOfCurrentPathHistory
+        (_, Just t) -> currentPathStack .= t
 
       HistoryI resultsCap diffCap from -> case from of
         Left hash -> resolveShortBranchHash hash >>= \case
@@ -756,7 +767,7 @@ loop = do
         where
         -- a list of missing sources (if any) and the actions that do the work
         go :: ([Path.HQSplit], [(Path, Branch0 m -> Branch0 m)])
-           -> Path.HQSplit 
+           -> Path.HQSplit
            -> ([Path.HQSplit], [(Path, Branch0 m -> Branch0 m)])
         go (missingSrcs, actions) hqsrc =
           let
@@ -2170,7 +2181,7 @@ toSlurpResult currentPath uf existingNames =
     terms = R.intersection (Names.terms existingNames) (Names.terms fileNames0)
     types = R.intersection (Names.types existingNames) (Names.types fileNames0)
 
-  -- update (n,r) if (n,r' /= r) exists in names0 and r, r' are Ref
+  -- update (n,r) if (n,r' /= r) exists in existingNames and r, r' are Ref
   updates :: SlurpComponent v
   updates = SlurpComponent (Set.fromList types) (Set.fromList terms) where
     terms =
@@ -2186,48 +2197,50 @@ toSlurpResult currentPath uf existingNames =
       , r' /= r
       ]
 
-  -- alias (n, r) if (n' /= n, r) exists in names0
-  termAliases :: Map v (Set Name)
-  termAliases = Map.fromList
-    [ (var n, aliases)
-    | (n, r@Referent.Ref{}) <- R.toList $ Names.terms fileNames0
-    , aliases               <-
-      [ Set.map (Path.unprefixName currentPath) . Set.delete n $ R.lookupRan
-          r
-          (Names.terms existingNames)
-      ]
-    , not (null aliases)
-    , let v = var n
-    , Set.notMember v (SC.terms dups)
+  buildAliases
+    :: R.Relation Name Referent
+    -> R.Relation Name Referent
+    -> Set v
+    -> Map v Slurp.Aliases
+  buildAliases existingNames namesFromFile duplicates = Map.fromList
+    [ ( var n
+      , if null aliasesOfOld
+        then Slurp.AddAliases aliasesOfNew
+        else Slurp.UpdateAliases aliasesOfOld aliasesOfNew
+      )
+    | (n, r@Referent.Ref{}) <- R.toList namesFromFile
+  -- All the refs whose names include `n`, and are not `r`
+    , let
+      refs = Set.delete r $ R.lookupDom n existingNames
+      aliasesOfNew =
+        Set.map (Path.unprefixName currentPath) . Set.delete n $
+          R.lookupRan r existingNames
+      aliasesOfOld =
+        Set.map (Path.unprefixName currentPath) . Set.delete n . R.dom $
+          R.restrictRan existingNames refs
+    , not (null aliasesOfNew && null aliasesOfOld)
+    , Set.notMember (var n) duplicates
     ]
 
-  typeAliases :: Map v (Set Name)
-  typeAliases = Map.fromList
-    [ (v, aliases)
-    | (n, r) <- R.toList $ Names.types fileNames0
-    , aliases <-
-      [ Set.map (Path.unprefixName currentPath) . Set.delete n $ R.lookupRan
-          r
-          (Names.types existingNames)
-      ]
-    , not (null aliases)
-    , let v = var n
-    , Set.notMember v (SC.types dups)
-    ]
+  termAliases :: Map v Slurp.Aliases
+  termAliases = buildAliases (Names.terms existingNames)
+                             (Names.terms fileNames0)
+                             (SC.terms dups)
 
-  -- add (n,r) if n doesn't exist and r doesn't exist in names0
+  typeAliases :: Map v Slurp.Aliases
+  typeAliases = buildAliases (R.mapRan (Referent.Ref) $ Names.types existingNames)
+                             (R.mapRan (Referent.Ref) $ Names.types fileNames0)
+                             (SC.types dups)
+
+  -- (n,r) is in `adds` if n isn't in existingNames
   adds = sc terms types where
     terms = addTerms (Names.terms existingNames) (Names.terms fileNames0)
     types = addTypes (Names.types existingNames) (Names.types fileNames0)
     addTerms existingNames = R.filter go where
-      go (n, r@Referent.Ref{}) = (not . R.memberDom n) existingNames
-                              && (not . R.memberRan r) existingNames
+      go (n, Referent.Ref{}) = (not . R.memberDom n) existingNames
       go _ = False
     addTypes existingNames = R.filter go where
-      go (n, r) = (not . R.memberDom n) existingNames
-               && (not . R.memberRan r) existingNames
-
-
+      go (n, _) = (not . R.memberDom n) existingNames
 
 filterBySlurpResult :: Ord v
            => SlurpResult v
@@ -2495,8 +2508,8 @@ makeHistoricalParsingNames lexedHQs = do
 basicParseNames0, basicPrettyPrintNames0, slurpResultNames0 :: Functor m => Action' m v Names0
 basicParseNames0 = fst <$> basicNames0'
 basicPrettyPrintNames0 = snd <$> basicNames0'
--- we check the file against everything we can reference during parsing
-slurpResultNames0 = basicParseNames0
+-- we check the file against everything in the current path
+slurpResultNames0 = currentPathNames0
 
 currentPathNames0 :: Functor m => Action' m v Names0
 currentPathNames0 = do
