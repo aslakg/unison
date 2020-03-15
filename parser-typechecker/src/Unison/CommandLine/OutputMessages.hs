@@ -1012,7 +1012,7 @@ displayDefinitions' ppe0 types terms = P.syntaxToColor $ P.sep "\n\n" (prettyTyp
 displayDefinitionsAsData' :: Var v => Ord a1
   => PPE.PrettyPrintEnvDecl
   -> Map Reference.Reference (DisplayThing (DD.Decl v a1))
-  -> Map Reference.Reference (DisplayThing (Unison.Term.AnnotatedTerm v a1))
+  -> Map Reference.Reference (DisplayThing (Term v a1))
   -> Pretty
 displayDefinitionsAsData' ppe0 types terms = P.syntaxToColor $ P.sep "\n\n" (prettyTypes <> prettyTerms)
   where
@@ -1108,7 +1108,7 @@ displayDefinitionsAsData :: Var v => Ord a1 =>
   Maybe FilePath
   -> PPE.PrettyPrintEnvDecl
   -> Map Reference.Reference (DisplayThing (DD.Decl v a1))
-  -> Map Reference.Reference (DisplayThing (Unison.Term.AnnotatedTerm v a1))
+  -> Map Reference.Reference (DisplayThing (Term v a1))
   -> IO Pretty
 displayDefinitionsAsData outputLoc ppe types terms | Map.null types && Map.null terms =
   pure $ P.callout "😶" "No results to display."
