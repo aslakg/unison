@@ -6,7 +6,8 @@ import EasyTest
 import qualified Data.Text as Text
 import Unison.ABT (annotation)
 import qualified Unison.HashQualified as HQ
-import Unison.Term
+import Unison.Term (Term)
+import qualified Unison.Term as Term
 import Unison.TermPrinter
 import qualified Unison.Type as Type
 import Unison.Symbol (Symbol, symbol)
@@ -29,7 +30,7 @@ getNames = PPE.fromNames Common.hqLength Unison.Builtin.names
 tcDiffRtt :: Bool -> String -> String -> Int -> Test ()
 tcDiffRtt rtt s expected width
   = let
-      inputTerm = tm s :: Unison.Term.AnnotatedTerm Symbol Ann
+      inputTerm = tm s :: Term Symbol Ann
       prettied  = CT.toPlain <$> pretty getNames inputTerm
       actual    = if width == 0
         then PP.renderUnbroken prettied
@@ -75,9 +76,9 @@ tcBinding :: Int -> String -> Maybe String -> String -> String -> Test ()
 tcBinding width v mtp tm expected
   = let
       baseTerm =
-        Unison.Test.Common.tm tm :: Unison.Term.AnnotatedTerm Symbol Ann
+        Unison.Test.Common.tm tm :: Term Symbol Ann
       inputType = fmap Unison.Test.Common.t mtp :: Maybe (Type.Type Symbol Ann)
-      inputTerm (Just tp) = ann (annotation tp) baseTerm tp
+      inputTerm (Just tp) = Term.ann (annotation tp) baseTerm tp
       inputTerm Nothing   = baseTerm
       varV     = symbol $ Text.pack v
       prettied = fmap CT.toPlain $ PP.syntaxToColor $ prettyBinding
@@ -162,11 +163,14 @@ test = scope "termprinter" . tests $
   , tc "match x with -1 -> foo"
   , tc "match x with 3.14159 -> foo"
   , tcDiffRtt False "match x with\n\
-                      \  true -> foo\n\
+                      \  true  -> foo\n\
                       \  false -> bar"
-                      "match x with\n  true -> foo\n  false -> bar" 0
+                      "match x with\n\
+                      \  true  -> foo\n\
+                      \  false -> bar"
+                      0
   , tcBreaks 50 "match x with\n\
-                 \  true -> foo\n\
+                 \  true  -> foo\n\
                  \  false -> bar"
   , tc "match x with false -> foo"
   , tc "match x with y@() -> y"
@@ -176,9 +180,9 @@ test = scope "termprinter" . tests $
                                                  -- need an actual effect constructor to test this with
   , tc "cases x -> x"
   , tc "cases\n\
-        \  [] -> 0\n\
+        \  []  -> 0\n\
         \  [x] -> 1\n\
-        \  _ -> 2"
+        \  _   -> 2"
   , tc "if a then if b then c else d else e"
   , tc "handle handle foo with bar with baz"
   , tcBreaks 16 "match (if a then\n\
@@ -209,8 +213,8 @@ test = scope "termprinter" . tests $
                  \  13 -> y\n\
                  \  14 -> z"
   , tcBreaks 21 "match x with\n\
-                 \  12 | p x -> x\n\
-                 \  13 | q x -> y\n\
+                 \  12 | p x   -> x\n\
+                 \  13 | q x   -> y\n\
                  \  14 | r x y -> z"
   , tcBreaks 9 "match x with\n\
                 \  112 ->\n\
@@ -276,7 +280,7 @@ test = scope "termprinter" . tests $
                  \  false\n\
                  \with foo"
   , tcBreaks 50 "match x with\n\
-                 \  true ->\n\
+                 \  true  ->\n\
                  \    d = 1\n\
                  \    false\n\
                  \  false ->\n\
@@ -360,7 +364,7 @@ test = scope "termprinter" . tests $
   , tcBreaks 32 "let\n\
                  \  go acc a b =\n\
                  \    match List.at 0 a with\n\
-                 \      Optional.None -> 0\n\
+                 \      Optional.None     -> 0\n\
                  \      Optional.Some hd1 -> 0\n\
                  \  go [] a b"
   , tcBreaks 30 "match x with\n\
@@ -500,7 +504,7 @@ test = scope "termprinter" . tests $
                  \        foo\n\
                  \      with foo\n\
                  \    bar\n\
-                 \  _ ->\n\
+                 \  _  ->\n\
                  \    b =\n\
                  \      use A.C x\n\
                  \      g x x\n\

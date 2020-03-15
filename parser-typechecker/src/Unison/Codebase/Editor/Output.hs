@@ -39,14 +39,13 @@ import qualified Unison.HashQualified as HQ
 import qualified Unison.HashQualified' as HQ'
 import qualified Unison.Parser as Parser
 import qualified Unison.PrettyPrintEnv as PPE
-import qualified Unison.Reference as Reference
-import qualified Unison.Term as Term
 import qualified Unison.Typechecker.Context as Context
 import qualified Unison.UnisonFile as UF
 import qualified Unison.Util.Pretty as P
 import Unison.Codebase.Editor.DisplayThing (DisplayThing)
 import qualified Unison.Codebase.Editor.TodoOutput as TO
 import Unison.Codebase.Editor.SearchResult' (SearchResult')
+import Unison.Term (Term)
 import Unison.Type (Type)
 import qualified Unison.Names3 as Names
 import qualified Data.Set as Set
@@ -57,7 +56,6 @@ import Unison.Codebase.ShortBranchHash (ShortBranchHash)
 import Unison.Codebase.Editor.RemoteRepo as RemoteRepo
 import Unison.Codebase.Editor.Output.BranchDiff (BranchDiffOutput)
 
-type Term v a = Term.AnnotatedTerm v a
 type ListDetailed = Bool
 type SourceName = Text
 type NumberedArgs = [String]
@@ -115,7 +113,8 @@ data Output v
   | PatchNotFound Path.Split'
   | TypeNotFound Path.HQSplit'
   | TermNotFound Path.HQSplit'
-  | TermNotFound' Reference.Id
+  | TypeNotFound' ShortHash
+  | TermNotFound' ShortHash
   | SearchTermsNotFound [HQ.HashQualified]
   -- ask confirmation before deleting the last branch that contains some defns
   -- `Path` is one of the paths the user has requested to delete, and is paired
@@ -185,6 +184,7 @@ data Output v
   | PatchNeedsToBeConflictFree
   | PatchInvolvesExternalDependents PPE.PrettyPrintEnv (Set Reference)
   | WarnIncomingRootBranch (Set ShortBranchHash)
+  | StartOfCurrentPathHistory
   | History (Maybe Int) [(ShortBranchHash, Names.Diff)] HistoryTail
   | ShowReflog [ReflogEntry]
   | PullAlreadyUpToDate RemoteNamespace Path'
@@ -271,6 +271,7 @@ isFailure o = case o of
   NameNotFound{} -> True
   PatchNotFound{} -> True
   TypeNotFound{} -> True
+  TypeNotFound'{} -> True
   TermNotFound{} -> True
   TermNotFound'{} -> True
   SearchTermsNotFound ts -> not (null ts)
@@ -310,6 +311,7 @@ isFailure o = case o of
   NothingToPatch{} -> False
   WarnIncomingRootBranch{} -> False
   History{} -> False
+  StartOfCurrentPathHistory -> True
   NotImplemented -> True
   DumpNumberedArgs{} -> False
   DumpBitBooster{} -> False

@@ -21,7 +21,7 @@ import qualified Unison.Names2                 as Names
 import           Unison.Reference               ( Reference )
 import qualified Unison.Reference              as Reference
 import qualified Unison.Referent as Referent
-import Unison.Referent (Referent)
+import Unison.Referent (Referent, Referent')
 import qualified Unison.Term                   as Term
 import qualified Unison.Type                   as Type
 import           Unison.Typechecker.TypeLookup  (TypeLookup(TypeLookup))
@@ -34,14 +34,15 @@ import           Unison.Var                     ( Var )
 import qualified Unison.Runtime.IOSource       as IOSource
 import           Unison.Symbol                  ( Symbol )
 import Unison.DataDeclaration (Decl)
+import Unison.Term (Term)
 import Unison.Type (Type)
 import Unison.Codebase.ShortBranchHash (ShortBranchHash)
+import Unison.ShortHash (ShortHash)
 
 --import Debug.Trace
 
 type DataDeclaration v a = DD.DataDeclaration' v a
 type EffectDeclaration v a = DD.EffectDeclaration' v a
-type Term v a = Term.AnnotatedTerm v a
 
 data Codebase m v a =
   Codebase { getTerm            :: Reference.Id -> m (Maybe (Term v a))
@@ -81,7 +82,9 @@ data Codebase m v a =
            , termsMentioningTypeImpl :: Reference -> m (Set Referent)
            -- number of base58 characters needed to distinguish any two references in the codebase
            , hashLength         :: m Int
-           , referencesByPrefix :: Text -> m (Set Reference.Id)
+           , termReferencesByPrefix :: ShortHash -> m (Set Reference.Id)
+           , typeReferencesByPrefix :: ShortHash -> m (Set Reference.Id)
+           , termReferentsByPrefix :: ShortHash -> m (Set (Referent' Reference.Id))
 
            , branchHashLength   :: m Int
            , branchHashesByPrefix :: ShortBranchHash -> m (Set Branch.Hash)
