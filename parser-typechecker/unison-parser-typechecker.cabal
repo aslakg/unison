@@ -35,15 +35,16 @@ library
   default-language:    Haskell2010
   exposed-modules:
     Unison.Builtin
+    Unison.Builtin.Decls
     Unison.Codecs
     Unison.Codebase
     Unison.Codebase.Branch
     Unison.Codebase.BranchDiff
-    Unison.Codebase.BranchLoadMode
     Unison.Codebase.BranchUtil
     Unison.Codebase.Causal
     Unison.Codebase.Classes
     Unison.Codebase.CodeLookup
+    Unison.Codebase.Editor.AuthorInfo
     Unison.Codebase.Editor.Command
     Unison.Codebase.Editor.DisplayThing
     Unison.Codebase.Editor.Git
@@ -60,6 +61,10 @@ library
     Unison.Codebase.Editor.TodoOutput
     Unison.Codebase.Editor.UriParser
     Unison.Codebase.FileCodebase
+    Unison.Codebase.FileCodebase.Common
+    Unison.Codebase.FileCodebase.Reserialize
+    Unison.Codebase.FileCodebase.CopyFilterIndex
+    Unison.Codebase.FileCodebase.CopyRegenerateIndex
     Unison.Codebase.GitError
     Unison.Codebase.Metadata
     Unison.Codebase.NameEdit
@@ -162,7 +167,7 @@ library
     free,
     fsnotify,
     fsutils,
-    --  < 0.1.2,
+    generic-monoid,
     hashable,
     hashtables,
     haskeline,
