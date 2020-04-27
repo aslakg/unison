@@ -273,9 +273,11 @@ view = InputPattern
   )
 
 viewData :: InputPattern
-viewData = InputPattern "data" [] [(OnePlus, exactDefinitionQueryArg)]
+viewData = InputPattern "data" [] [(OnePlus, definitionQueryArg)]
       "`data foo` prints the definition of `foo` as a data structure."
-      (pure . Input.ShowDefinitionII Input.ConsoleLocation)      
+      ( fmap (Input.ShowDefinitionII Input.ConsoleLocation)
+      . traverse parseHashQualifiedName
+      )    
 
 display :: InputPattern
 display = InputPattern

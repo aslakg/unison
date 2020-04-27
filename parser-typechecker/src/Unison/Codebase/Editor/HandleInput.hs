@@ -1116,11 +1116,8 @@ loop = do
 
 
 
-      ShowDefinitionII outputLoc (fmap HQ.unsafeFromString -> hqs) -> do
-        parseNames <- makeHistoricalParsingNames $ Set.fromList hqs
-        let resultss = searchBranchExact hqLength parseNames hqs
-            (misses, hits) = partition (\(_, results) -> null results) (zip hqs resultss)
-            results = List.sort . uniqueBy SR.toReferent $ hits >>= snd
+      ShowDefinitionII outputLoc query -> do
+        (misses, results) <- hqNameQuerySuffixify query
         results' <- loadSearchResults results
         let termTypes :: Map.Map Reference (Type v Ann)
             termTypes =

@@ -20,6 +20,7 @@ import           Unison.ShortHash (ShortHash)
 import           Unison.Codebase.ShortBranchHash (ShortBranchHash)
 import qualified Unison.Codebase.ShortBranchHash as SBH
 import qualified Data.Text as Text
+import           Unison.Codebase.NameSegment    ( NameSegment )
 
 data Event
   = UnisonFileChanged SourceName Source
